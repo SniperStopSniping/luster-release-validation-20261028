@@ -27,7 +27,7 @@ permissions:
 jobs:
   cursor-proof:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     env:
       SUBJECT_SHA: 'a745b0c80263a0bc129a8f50a58671d1c596f9ee'
       NODE_IMAGE: 'node:24-bookworm-slim@sha256:e1582112fb9f152ed38eefcd712efc93fee1becb519fdfa57574d5e07eaa5e7d'
@@ -226,8 +226,24 @@ jobs:
           test "$(safe_git rev-parse HEAD)" = "$SUBJECT_SHA"
           test -z "$(safe_git status --porcelain)"
           # Separate reviewed CI-runner correction; application snapshot stays a745.
-          printf '%s  %s\n' efcd406eaeee62f738317ff7cb1ff9215d025af534462e203cab19e46facfb46 "$GITHUB_WORKSPACE/driver/cursor-bootstrap-fixed.mjs" | sha256sum --check
-          timeout 240s env -i PATH=/usr/bin:/bin HOME="$owned" RUNNER_TEMP="$RUNNER_TEMP" "$owned/node" "$GITHUB_WORKSPACE/driver/cursor-bootstrap-fixed.mjs"
-          env -i PATH=/usr/bin:/bin HOME="$owned" "$owned/node" -e 'const r=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));console.log(JSON.stringify(r))' "$RUNNER_TEMP/topup-cursor-postgres-summary.json"
+          printf '%s  %s\n' 856f993caec05c85ba6c1dde46303efca1e14a7e4181396f6a60e3bee6156b78 "$GITHUB_WORKSPACE/driver/cursor-bootstrap-fixed.mjs" | sha256sum --check
+          cursor_exit=0
+          timeout 240s env -i PATH=/usr/bin:/bin HOME="$owned" RUNNER_TEMP="$RUNNER_TEMP" "$owned/node" "$GITHUB_WORKSPACE/driver/cursor-bootstrap-fixed.mjs" || cursor_exit=$?
+          # Preserve bounded safe evidence even when the original runner failed.
+          # stdin argv[1] is "-", so importing the module cannot rerun its CLI.
+          env -i PATH=/usr/bin:/bin HOME="$owned" "$owned/node" --input-type=module - "$RUNNER_TEMP/topup-cursor-postgres-summary.json" "$GITHUB_WORKSPACE/driver/cursor-bootstrap-fixed.mjs" <<'CURSOR_SUMMARY'
+          import assert from 'node:assert/strict';
+          import { pathToFileURL } from 'node:url';
+          const runner = await import(pathToFileURL(process.argv[3]).href);
+          const r = runner.readBoundedCursorJson(process.argv[2], 16384);
+          assert.ok(['passed', 'blocked', 'pending-cleanup'].includes(r.status));
+          assert.ok(['setup', 'final-server-ready', 'test-execution', 'complete'].includes(r.phase));
+          assert.equal(r.expectedTests, 18);
+          assert.equal(typeof r.cleanupVerified, 'boolean');
+          assert.equal(r.rawStreamsRetained, false);
+          const result = r.result === null ? null : runner.projectCursorResult(r.result);
+          console.log(JSON.stringify({status:r.status, phase:r.phase, expectedTests:r.expectedTests, result, identityReported:r.identity !== null, cleanupVerified:r.cleanupVerified, rawStreamsRetained:false}));
+          CURSOR_SUMMARY
           sha256sum --check "$RUNNER_TEMP/booking-source.sha256" > /dev/null
           test -z "$(safe_git status --porcelain)"
+          exit "$cursor_exit"
