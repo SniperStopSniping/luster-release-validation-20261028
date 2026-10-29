@@ -27,7 +27,7 @@ permissions:
 jobs:
   booking:
     runs-on: ubuntu-latest
-    timeout-minutes: 13
+    timeout-minutes: 11
     env:
       SUBJECT_SHA: 'a745b0c80263a0bc129a8f50a58671d1c596f9ee'
       NODE_IMAGE: 'node:24-bookworm-slim@sha256:e1582112fb9f152ed38eefcd712efc93fee1becb519fdfa57574d5e07eaa5e7d'
@@ -133,6 +133,10 @@ jobs:
               if printf '%s\n' "$ids" | grep -Fqx "$cid"; then
                 if ! label="$(timeout 15s docker inspect --format '{{index .Config.Labels "luster-driver-owner"}}' "$cid")"; then cleanup_failed=1; continue; fi
                 if test "$label" != "$owner"; then cleanup_failed=1; continue; fi
+                if test "$original_exit" != 0 && test "$file" = "$owned/pg.cid"; then
+                  timeout 5s docker inspect --format '{{json .State}}' "$cid" || true
+                  timeout 5s docker logs --tail 80 "$cid" || true
+                fi
                 if ! timeout 15s docker rm -f "$cid"; then cleanup_failed=1; fi
               fi
               if ! ids="$(timeout 15s docker ps -aq --no-trunc)"; then cleanup_failed=1; continue; fi
@@ -216,6 +220,7 @@ jobs:
           ready=false
           for round in $(seq 1 30); do
             if timeout 5s docker exec "$pgid" sh -ec 'test "$(cat /proc/1/comm)" = postgres; exec pg_isready -h 127.0.0.1 -p 55432 -U luster_e2e_ci -d luster_e2e_ci_disposable'; then ready=true; break; fi
+            if test "$(timeout 5s docker inspect --format '{{.State.Running}}' "$pgid")" != true; then break; fi
             sleep 1
           done
           test "$ready" = true
