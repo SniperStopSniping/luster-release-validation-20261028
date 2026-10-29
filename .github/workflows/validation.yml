@@ -27,7 +27,7 @@ permissions:
 jobs:
   booking:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 14
     env:
       SUBJECT_SHA: 'a745b0c80263a0bc129a8f50a58671d1c596f9ee'
       NODE_IMAGE: 'node:24-bookworm-slim@sha256:e1582112fb9f152ed38eefcd712efc93fee1becb519fdfa57574d5e07eaa5e7d'
@@ -148,7 +148,7 @@ jobs:
           # Install does not execute subject/dependency lifecycle scripts. No host
           # home, credentials, Docker socket or Actions runtime env enters it.
           assert_git_metadata
-          timeout 240s docker run --rm --cidfile "$owned/install.cid" --label "luster-driver-owner=$owner" --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc "$NODE_IMAGE" bash -euo pipefail -c 'test ! -e /subject/.git/HEAD; test ! -e /subject/.git/config; touch /tmp/empty-user.npmrc /tmp/empty-global.npmrc; npm ci --ignore-scripts --no-audit --no-fund'
+          timeout 240s docker run --user "$(id -u):$(id -g)" --rm --cidfile "$owned/install.cid" --label "luster-driver-owner=$owner" --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc "$NODE_IMAGE" bash -euo pipefail -c 'test ! -e /subject/.git/HEAD; test ! -e /subject/.git/config; mkdir -p "$HOME" "$NPM_CONFIG_CACHE"; touch /tmp/empty-user.npmrc /tmp/empty-global.npmrc; npm ci --ignore-scripts --no-audit --no-fund'
           assert_git_metadata
           sha256sum --check "$RUNNER_TEMP/booking-git-metadata.sha256"
           sha256sum --check "$RUNNER_TEMP/booking-inputs.sha256"
@@ -157,7 +157,7 @@ jobs:
           # --offline is not the boundary: namespace none blocks direct fetches
           # and child npm/download fallbacks as well. Any failure stops here.
           assert_git_metadata
-          timeout 180s docker run -i --rm --cidfile "$owned/rebuild.cid" --label "luster-driver-owner=$owner" --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc -e NPM_CONFIG_AUDIT=false -e NPM_CONFIG_FUND=false "$NODE_IMAGE" bash -euo pipefail -s <<'LIFECYCLE'
+          timeout 180s docker run --user "$(id -u):$(id -g)" -i --rm --cidfile "$owned/rebuild.cid" --label "luster-driver-owner=$owner" --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc -e NPM_CONFIG_AUDIT=false -e NPM_CONFIG_FUND=false "$NODE_IMAGE" bash -euo pipefail -s <<'LIFECYCLE'
           test ! -e /subject/.git/HEAD
           test ! -e /subject/.git/config
           test "$(ls /sys/class/net)" = lo
@@ -233,6 +233,7 @@ jobs:
           ENV
           cat > "$results/run.sh" <<'TEST'
           set -euo pipefail
+          mkdir -p "$HOME" "$NPM_CONFIG_CACHE"
           test ! -e /subject/.git/HEAD
           test ! -e /subject/.git/config
           test "$(ls /sys/class/net)" = lo
@@ -248,7 +249,7 @@ jobs:
           node -e 'const r=require("/results/test-results.json"),a=require("assert/strict");a.equal(r.success,true);for(const[k,v]of Object.entries({numTotalTests:62,numPassedTests:62,numFailedTests:0,numPendingTests:0}))a.equal(r[k],v);console.log(JSON.stringify({scope:"one booking full-suite pass, 15 rounds",passed:62,failed:0,skipped:0}));console.log(JSON.stringify(require("/results/summary.json")))'
           TEST
           assert_git_metadata
-          timeout 360s docker run --rm --cidfile "$owned/test.cid" --label "luster-driver-owner=$owner" --network "container:$pgid" --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=4g --memory-swap=4g --cpus=2 --pids-limit=256 --env-file "$owned/test.env" --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 --mount "type=bind,src=$results,dst=/results" -w /subject "$NODE_IMAGE" bash /results/run.sh
+          timeout 360s docker run --user "$(id -u):$(id -g)" --rm --cidfile "$owned/test.cid" --label "luster-driver-owner=$owner" --network "container:$pgid" --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=4g --memory-swap=4g --cpus=2 --pids-limit=256 --env-file "$owned/test.env" -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 --mount "type=bind,src=$results,dst=/results" -w /subject "$NODE_IMAGE" bash /results/run.sh
           assert_git_metadata
           sha256sum --check "$RUNNER_TEMP/booking-git-metadata.sha256"
           sha256sum --check "$RUNNER_TEMP/booking-inputs.sha256"
