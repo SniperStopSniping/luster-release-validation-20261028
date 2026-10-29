@@ -27,7 +27,7 @@ permissions:
 jobs:
   booking:
     runs-on: ubuntu-latest
-    timeout-minutes: 14
+    timeout-minutes: 13
     env:
       SUBJECT_SHA: 'a745b0c80263a0bc129a8f50a58671d1c596f9ee'
       NODE_IMAGE: 'node:24-bookworm-slim@sha256:e1582112fb9f152ed38eefcd712efc93fee1becb519fdfa57574d5e07eaa5e7d'
@@ -157,11 +157,17 @@ jobs:
           # --offline is not the boundary: namespace none blocks direct fetches
           # and child npm/download fallbacks as well. Any failure stops here.
           assert_git_metadata
-          timeout 180s docker run --user "$(id -u):$(id -g)" -i --rm --cidfile "$owned/rebuild.cid" --label "luster-driver-owner=$owner" --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc -e NPM_CONFIG_AUDIT=false -e NPM_CONFIG_FUND=false "$NODE_IMAGE" bash -euo pipefail -s <<'LIFECYCLE'
+          timeout 180s docker run --user "$(id -u):$(id -g)" -i --rm --cidfile "$owned/rebuild.cid" --label "luster-driver-owner=$owner" --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc -e NPM_CONFIG_AUDIT=false -e NPM_CONFIG_FUND=false -e SWC_NATIVE_BINDING_CACHE=/subject/node_modules/.cache/swc-native "$NODE_IMAGE" bash -euo pipefail -s <<'LIFECYCLE'
           test ! -e /subject/.git/HEAD
           test ! -e /subject/.git/config
           test "$(ls /sys/class/net)" = lo
-          mkdir -p "$HOME" "$NPM_CONFIG_CACHE"
+          test ! -L node_modules
+          test ! -L node_modules/.cache
+          test ! -L node_modules/.cache/swc-native
+          mkdir -p "$HOME" "$NPM_CONFIG_CACHE" node_modules/.cache/swc-native
+          chmod 0700 node_modules/.cache/swc-native
+          test "$(stat -c %u node_modules/.cache/swc-native)" = "$(id -u)"
+          test "$(stat -c %a node_modules/.cache/swc-native)" = 700
           touch /tmp/empty-user.npmrc /tmp/empty-global.npmrc
           node --version
           npm --version
@@ -249,7 +255,7 @@ jobs:
           node -e 'const r=require("/results/test-results.json"),a=require("assert/strict");a.equal(r.success,true);for(const[k,v]of Object.entries({numTotalTests:62,numPassedTests:62,numFailedTests:0,numPendingTests:0}))a.equal(r[k],v);console.log(JSON.stringify({scope:"one booking full-suite pass, 15 rounds",passed:62,failed:0,skipped:0}));console.log(JSON.stringify(require("/results/summary.json")))'
           TEST
           assert_git_metadata
-          timeout 360s docker run --user "$(id -u):$(id -g)" --rm --cidfile "$owned/test.cid" --label "luster-driver-owner=$owner" --network "container:$pgid" --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=4g --memory-swap=4g --cpus=2 --pids-limit=256 --env-file "$owned/test.env" -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 --mount "type=bind,src=$results,dst=/results" -w /subject "$NODE_IMAGE" bash /results/run.sh
+          timeout 360s docker run --user "$(id -u):$(id -g)" --rm --cidfile "$owned/test.cid" --label "luster-driver-owner=$owner" --network "container:$pgid" --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=4g --memory-swap=4g --cpus=2 --pids-limit=256 --env-file "$owned/test.env" -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache -e SWC_NATIVE_BINDING_CACHE=/subject/node_modules/.cache/swc-native --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 --mount "type=bind,src=$results,dst=/results" -w /subject "$NODE_IMAGE" bash /results/run.sh
           assert_git_metadata
           sha256sum --check "$RUNNER_TEMP/booking-git-metadata.sha256"
           sha256sum --check "$RUNNER_TEMP/booking-inputs.sha256"
@@ -271,7 +277,7 @@ jobs:
           test -z "$(safe_git status --porcelain)"
           # Recheck all 43 CI contracts plus four dependency-pair contracts on
           # the pinned Node 24 binary. Local attempts hit the Mac's RSS stop.
-          if ! timeout 90s env -i PATH=/usr/bin:/bin HOME="$owned" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null NODE_OPTIONS=--max-old-space-size=192 "$owned/node" --test --test-concurrency=1 --test-reporter=tap scripts/ci-workflow.node-test.mjs scripts/dependency-pair.node-test.mjs > "$results/ci-contracts.tap" 2>&1; then
+          if ! timeout 90s env -i PATH=/usr/bin:/bin HOME="$owned" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null NODE_OPTIONS=--max-old-space-size=192 SWC_NATIVE_BINDING_CACHE="$PWD/node_modules/.cache/swc-native" "$owned/node" --test --test-concurrency=1 --test-reporter=tap scripts/ci-workflow.node-test.mjs scripts/dependency-pair.node-test.mjs > "$results/ci-contracts.tap" 2>&1; then
             tail -n 80 "$results/ci-contracts.tap"
             exit 1
           fi
