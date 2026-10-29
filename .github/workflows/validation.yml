@@ -1,0 +1,281 @@
+name: Prepared exact-a745 booking and cursor verification
+# PREPARATION ONLY. No repository, branch, workflow run or spending authorized.
+# Driver default branch holds only driver + reviewed snapshot pack/manifest.
+# Snapshot contains exact candidate commit and its tree/blobs, NO parent objects.
+# Never push into SniperStopSniping/nailsalon. Dispatch default only.
+# A temporary repo does NOT prove Vercel/GitHub Apps/secrets isolation; review that
+# independently before publishing. Actions availability/security/costs unverified.
+# Node Linux/amd64 manifest/config digest content chain independently reviewed
+# from official anonymous registry metadata (Node 24.22.1); image layers/runtime
+# are NOT verified. Actions v4 refs below are pinned to commits resolved from
+# official GitHub metadata; this is not action security/runtime approval.
+# Forced runner cancellation/SIGKILL may bypass EXIT cleanup. Writable install
+# mounts and PostgreSQL/tmpfs storage lack a proven disk ceiling; only host
+# preflight free space is checked. Equal memory-swap requests no container swap,
+# but runner/kernel support and enforcement are unverified execution gates.
+# Two-phase install then network-none rebuild/explicit root prepare is a NEW
+# isolated method, not equivalent evidence to original npm ci lifecycle ordering.
+# Pinned-image npm behavior/native probes/full suites remain UNVERIFIED.
+# Sequential rebuild/native probes are required execution gates, no fallback.
+# Real .git metadata is masked by empty read-only tmpfs in EVERY subject-mounted
+# container. Docker masking effectiveness remains an unexecuted runtime gate.
+# Host Git uses a scrubbed environment and disables fsmonitor/hooks/helpers.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  booking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUBJECT_SHA: 'a745b0c80263a0bc129a8f50a58671d1c596f9ee'
+      NODE_IMAGE: 'node:24-bookworm-slim@sha256:e1582112fb9f152ed38eefcd712efc93fee1becb519fdfa57574d5e07eaa5e7d'
+      PG_IMAGE: 'mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea'
+    steps:
+      - name: Require exact isolated driver repository and default branch
+        env:
+          DRIVER_REPOSITORY: ${{ github.repository }}
+          DISPATCH_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          test "$DRIVER_REPOSITORY" = 'SniperStopSniping/luster-release-validation-20261028'
+          test "$DISPATCH_REF" = "refs/heads/$DEFAULT_BRANCH"
+          test "$DEFAULT_BRANCH" != 'subject'
+          [[ "$NODE_IMAGE" =~ ^node:24-bookworm-slim@sha256:[a-f0-9]{64}$ ]]
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (official tag resolved read-only)
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: driver
+          persist-credentials: false
+      - name: Reconstruct exact shallow candidate from reviewed source-only pack
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' 44340862514418774246d6d283268d23afedf95f93493b17bb2aef8350253843 driver/snapshot-shards.sha256 | sha256sum --check
+          (cd driver; sha256sum --check snapshot-shards.sha256)
+          cat driver/candidate-a745.pack.part0{0,1,2,3,4,5} > "$RUNNER_TEMP/candidate-a745.pack"
+          test "$(stat -c %s "$RUNNER_TEMP/candidate-a745.pack")" = 197937771
+          printf '%s  %s\n' e7ee5fd5b2d4084ca416d1025a2d9371e39e58d3216b17a5f67254ff9955a144 "$RUNNER_TEMP/candidate-a745.pack" | sha256sum --check
+          mkdir subject
+          cd subject
+          safe_git() {
+            env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/host-git-home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_COUNT=0 GIT_OPTIONAL_LOCKS=0 /usr/bin/git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c core.pager=cat -c credential.helper= -c diff.external= "$@"
+          }
+          safe_git init --template=
+          printf '%s\n' "$SUBJECT_SHA" > .git/shallow
+          safe_git index-pack --stdin < "$RUNNER_TEMP/candidate-a745.pack"
+          safe_git update-ref --no-deref HEAD "$SUBJECT_SHA"
+          safe_git fsck --strict --full --no-reflogs
+          test "$(safe_git rev-parse HEAD)" = "$SUBJECT_SHA"
+          test "$(safe_git rev-parse HEAD^{tree})" = 649e328be9b2c094b09e14720a947d2c5721239c
+          test "$(safe_git rev-list --count HEAD)" = 1
+          safe_git cat-file --batch-all-objects --batch-check='%(objecttype)' > "$RUNNER_TEMP/snapshot-types.txt"
+          test "$(grep -cx commit "$RUNNER_TEMP/snapshot-types.txt")" = 1
+          test "$(grep -cx tree "$RUNNER_TEMP/snapshot-types.txt")" = 885
+          test "$(grep -cx blob "$RUNNER_TEMP/snapshot-types.txt")" = 5390
+          test "$(wc -l < "$RUNNER_TEMP/snapshot-types.txt")" = 6276
+          test "$(cat .git/shallow)" = "$SUBJECT_SHA"
+          safe_git -c submodule.recurse=false checkout --force --detach "$SUBJECT_SHA"
+          test -z "$(safe_git status --porcelain)"
+      - name: Freeze clean exact subject and check host resources
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          assert_git_metadata() {
+            test -d .git && test ! -L .git
+            test -f .git/config && test ! -L .git/config
+            test -f .git/HEAD && test ! -L .git/HEAD
+            test ! -e .git/commondir
+            test ! -e .git/worktrees
+            test ! -e .git/objects/info/alternates
+          }
+          safe_git() {
+            env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/host-git-home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_COUNT=0 GIT_OPTIONAL_LOCKS=0 /usr/bin/git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c core.pager=cat -c credential.helper= -c diff.external= "$@"
+          }
+          assert_git_metadata
+          test "$(safe_git rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(safe_git status --porcelain)"
+          sha256sum package.json package-lock.json > "$RUNNER_TEMP/booking-inputs.sha256"
+          safe_git ls-files -z | xargs -0 sha256sum > "$RUNNER_TEMP/booking-source.sha256"
+          sha256sum .git/config .git/HEAD .git/shallow > "$RUNNER_TEMP/booking-git-metadata.sha256"
+          test "$(df -Pk . | awk 'NR==2 {print $4}')" -ge 3145728
+          test "$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)" -ge 6291456
+      - name: Run one original full suite in owned isolated network namespace
+        working-directory: subject
+        run: |
+          set -euo pipefail
+          assert_git_metadata() {
+            test -d .git && test ! -L .git
+            test -f .git/config && test ! -L .git/config
+            test -f .git/HEAD && test ! -L .git/HEAD
+            test ! -e .git/commondir
+            test ! -e .git/worktrees
+            test ! -e .git/objects/info/alternates
+          }
+          safe_git() {
+            env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/host-git-home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_COUNT=0 GIT_OPTIONAL_LOCKS=0 /usr/bin/git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c core.pager=cat -c credential.helper= -c diff.external= "$@"
+          }
+          assert_git_metadata
+          owned="$RUNNER_TEMP/booking-owned"
+          results="$RUNNER_TEMP/booking-results"
+          mkdir "$owned" "$results"
+          owner="run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            original_exit=$?
+            cleanup_failed=0
+            for file in "$owned"/*.cid; do
+              test -e "$file" || continue
+              cid="$(cat "$file")"
+              if [[ ! "$cid" =~ ^[a-f0-9]{64}$ ]]; then cleanup_failed=1; continue; fi
+              if ! ids="$(timeout 15s docker ps -aq --no-trunc)"; then cleanup_failed=1; continue; fi
+              if printf '%s\n' "$ids" | grep -Fqx "$cid"; then
+                if ! label="$(timeout 15s docker inspect --format '{{index .Config.Labels "luster-driver-owner"}}' "$cid")"; then cleanup_failed=1; continue; fi
+                if test "$label" != "$owner"; then cleanup_failed=1; continue; fi
+                if ! timeout 15s docker rm -f "$cid"; then cleanup_failed=1; fi
+              fi
+              if ! ids="$(timeout 15s docker ps -aq --no-trunc)"; then cleanup_failed=1; continue; fi
+              if printf '%s\n' "$ids" | grep -Fqx "$cid"; then cleanup_failed=1; fi
+            done
+            printf 'owned_container_cleanup_failed=%s\n' "$cleanup_failed"
+            if test "$cleanup_failed" != 0; then exit 1; fi
+            exit "$original_exit"
+          }
+          trap cleanup EXIT
+          timeout 120s docker pull "$NODE_IMAGE"
+          timeout 120s docker pull "$PG_IMAGE"
+          # Install does not execute subject/dependency lifecycle scripts. No host
+          # home, credentials, Docker socket or Actions runtime env enters it.
+          assert_git_metadata
+          timeout 240s docker run --rm --cidfile "$owned/install.cid" --label "luster-driver-owner=$owner" --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc "$NODE_IMAGE" bash -euo pipefail -c 'test ! -e /subject/.git/HEAD; test ! -e /subject/.git/config; touch /tmp/empty-user.npmrc /tmp/empty-global.npmrc; npm ci --ignore-scripts --no-audit --no-fund'
+          assert_git_metadata
+          sha256sum --check "$RUNNER_TEMP/booking-git-metadata.sha256"
+          sha256sum --check "$RUNNER_TEMP/booking-inputs.sha256"
+          # Standalone lifecycle namespace BEFORE any PG creation/access. Only
+          # subject mount: no results/driver, home, credentials or Docker socket.
+          # --offline is not the boundary: namespace none blocks direct fetches
+          # and child npm/download fallbacks as well. Any failure stops here.
+          assert_git_metadata
+          timeout 180s docker run -i --rm --cidfile "$owned/rebuild.cid" --label "luster-driver-owner=$owner" --network=none --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 -w /subject -e CI=true -e HUSKY=0 -e HOME=/tmp/isolated-home -e NPM_CONFIG_CACHE=/tmp/isolated-npm-cache -e NPM_CONFIG_USERCONFIG=/tmp/empty-user.npmrc -e NPM_CONFIG_GLOBALCONFIG=/tmp/empty-global.npmrc -e NPM_CONFIG_AUDIT=false -e NPM_CONFIG_FUND=false "$NODE_IMAGE" bash -euo pipefail -s <<'LIFECYCLE'
+          test ! -e /subject/.git/HEAD
+          test ! -e /subject/.git/config
+          test "$(ls /sys/class/net)" = lo
+          mkdir -p "$HOME" "$NPM_CONFIG_CACHE"
+          touch /tmp/empty-user.npmrc /tmp/empty-global.npmrc
+          node --version
+          npm --version
+          npm rebuild --offline --ignore-scripts=false --foreground-scripts
+          HUSKY=0 npm run prepare --offline --ignore-scripts=false
+          # Rebuild exit zero alone cannot prove native/fallback loading.
+          node <<'NATIVE'
+          const assert = require("node:assert/strict");
+          const path = require("node:path");
+          const root = process.cwd();
+          for (const subpath of ["esbuild", "tsx/node_modules/esbuild", "vite/node_modules/esbuild", "@esbuild-kit/core-utils/node_modules/esbuild"]) {
+            const tool = require(path.join(root, "node_modules", subpath));
+            const result = tool.transformSync("const value: number = 1", {loader: "ts"});
+            assert.equal(typeof result.code, "string");
+            assert.ok(result.code.includes("value"));
+          }
+          for (const subpath of ["@swc/core", "next-intl/node_modules/@swc/core"]) {
+            const tool = require(path.join(root, "node_modules", subpath));
+            const result = tool.transformSync("const value: number = 1", {jsc: {parser: {syntax: "typescript"}}});
+            assert.equal(typeof result.code, "string");
+            assert.ok(result.code.includes("value"));
+          }
+          const rollup = require(path.join(root, "node_modules/rollup/dist/native.js"));
+          assert.equal(typeof rollup.parseAsync, "function");
+          assert.equal(typeof require("@parcel/watcher").subscribe, "function");
+          (async () => {
+            for (const subpath of ["sharp", "@storybook/nextjs/node_modules/sharp"]) {
+              const sharp = require(path.join(root, "node_modules", subpath));
+              const image = await sharp({create: {width: 1, height: 1, channels: 3, background: "white"}}).png().toBuffer();
+              assert.ok(image.length > 0);
+            }
+          })().catch(error => {console.error(error.message); process.exitCode = 1});
+          NATIVE
+          LIFECYCLE
+          assert_git_metadata
+          sha256sum --check "$RUNNER_TEMP/booking-git-metadata.sha256"
+          sha256sum --check "$RUNNER_TEMP/booking-inputs.sha256"
+          sha256sum --check "$RUNNER_TEMP/booking-source.sha256" > /dev/null
+          test "$(safe_git rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(safe_git status --porcelain)"
+          # PG has only loopback, no bridge, port publication, host networking,
+          # capabilities, credential mounts or persistent/shared database volume.
+          docker run -d --cidfile "$owned/pg.cid" --label "luster-driver-owner=$owner" --network=none --user=postgres --cap-drop=ALL --security-opt=no-new-privileges --read-only --memory=2g --memory-swap=2g --cpus=2 --pids-limit=128 --tmpfs /tmp:rw --tmpfs /var/lib/postgresql/data:rw,mode=1777 -e PGDATA=/var/lib/postgresql/data/owned -e POSTGRES_DB=luster_e2e_ci_disposable -e POSTGRES_USER=luster_e2e_ci -e POSTGRES_PASSWORD=luster-e2e-ci-only-password "$PG_IMAGE" postgres -h 127.0.0.1 -p 55432 -c unix_socket_directories=/tmp
+          pgid="$(cat "$owned/pg.cid")"
+          timeout 15s docker inspect "$pgid" | jq -e --arg image "$PG_IMAGE" '.[0] | .Config.Image == $image and .HostConfig.NetworkMode == "none" and ((.HostConfig.PortBindings // {}) | length == 0) and (.HostConfig.Privileged == false)'
+          ready=false
+          for round in $(seq 1 30); do
+            if timeout 5s docker exec "$pgid" sh -ec 'test "$(cat /proc/1/comm)" = postgres; exec pg_isready -h 127.0.0.1 -p 55432 -U luster_e2e_ci -d luster_e2e_ci_disposable'; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          # Literal synthetic env only. Service-container evidence vars are
+          # ABSENT: unchanged subject guards must attest real 127.0.0.1:55432.
+          cat > "$owned/test.env" <<'ENV'
+          DATABASE_URL=postgresql://luster_e2e_ci:luster-e2e-ci-only-password@127.0.0.1:55432/luster_e2e_ci_disposable?application_name=luster-e2e-ci-disposable
+          CONCURRENCY_TEST_DATABASE_URL=postgresql://luster_e2e_ci:luster-e2e-ci-only-password@127.0.0.1:55432/luster_e2e_ci_disposable?application_name=luster-e2e-ci-disposable
+          LUSTER_DISPOSABLE_DATABASE=true
+          CUSTOMER_BOOKING_PG_REQUIRED=true
+          CI=true
+          NODE_ENV=test
+          BILLING_PLAN_ENV=test
+          CLERK_SECRET_KEY=ci-placeholder-not-a-secret
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_Y2kubHVzdGVyLmludmFsaWQk
+          NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+          STRIPE_SECRET_KEY=ci-placeholder-not-a-secret
+          STRIPE_WEBHOOK_SECRET=ci-placeholder-not-a-secret
+          STRIPE_CONNECT_WEBHOOK_SECRET=ci-placeholder-not-a-secret
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=ci-placeholder-not-a-secret
+          ENV
+          cat > "$results/run.sh" <<'TEST'
+          set -euo pipefail
+          test ! -e /subject/.git/HEAD
+          test ! -e /subject/.git/config
+          test "$(ls /sys/class/net)" = lo
+          node -e 'const net=require("net");const denied=host=>new Promise((resolve,reject)=>{const s=net.connect({host,port:443});s.once("connect",()=>{s.destroy();reject(Error("NETWORK_UNEXPECTEDLY_ALLOWED"))});s.once("error",e=>["ENETUNREACH","EHOSTUNREACH","EACCES","EPERM"].includes(e.code)?resolve():reject(e));setTimeout(()=>{s.destroy();reject(Error("NETWORK_PROBE_TIMEOUT"))},1000).unref()});Promise.all([denied("198.51.100.1"),denied("2001:db8::1")]).catch(e=>{console.error(e.code||e.message);process.exitCode=1})'
+          node -e 'const {Client}=require("pg"),a=require("assert/strict");const c=new Client({connectionString:process.env.DATABASE_URL});(async()=>{try{await c.connect();const r=(await c.query("SELECT host(inet_server_addr()) AS address,inet_server_port() AS port,current_database() AS db,current_user AS usr,current_setting($1) AS version",["server_version_num"])).rows[0];a.deepEqual([r.address,r.port,r.db,r.usr],["127.0.0.1",55432,"luster_e2e_ci_disposable","luster_e2e_ci"]);a.equal(Math.floor(Number(r.version)/10000),16)}finally{await c.end()}})().catch(e=>{console.error(e.message);process.exitCode=1})'
+          node --test scripts/check-booking-scale-result.node-test.mjs
+          npm run db:prepare:e2e:ci
+          set +e
+          node node_modules/vitest/vitest.mjs run src/libs/appointmentCreation.customerOperation.concurrency.integration.test.ts --maxWorkers=1 --no-file-parallelism --retry=0 --testTimeout=120000 --hookTimeout=120000 --reporter=default --reporter=json --outputFile.json=/results/test-results.json 2>&1 | tee /results/output.txt
+          test_exit=${PIPESTATUS[0]}
+          set -e
+          node scripts/check-booking-scale-result.mjs /results/output.txt /results/summary.json candidate "$test_exit"
+          node -e 'const r=require("/results/test-results.json"),a=require("assert/strict");a.equal(r.success,true);for(const[k,v]of Object.entries({numTotalTests:62,numPassedTests:62,numFailedTests:0,numPendingTests:0}))a.equal(r[k],v);console.log(JSON.stringify({scope:"one booking full-suite pass, 15 rounds",passed:62,failed:0,skipped:0}));console.log(JSON.stringify(require("/results/summary.json")))'
+          TEST
+          assert_git_metadata
+          timeout 360s docker run --rm --cidfile "$owned/test.cid" --label "luster-driver-owner=$owner" --network "container:$pgid" --cap-drop=ALL --security-opt=no-new-privileges --read-only --tmpfs /tmp:rw --memory=4g --memory-swap=4g --cpus=2 --pids-limit=256 --env-file "$owned/test.env" --mount "type=bind,src=$PWD,dst=/subject" --tmpfs /subject/.git:ro,noexec,nosuid,nodev,mode=000 --mount "type=bind,src=$results,dst=/results" -w /subject "$NODE_IMAGE" bash /results/run.sh
+          assert_git_metadata
+          sha256sum --check "$RUNNER_TEMP/booking-git-metadata.sha256"
+          sha256sum --check "$RUNNER_TEMP/booking-inputs.sha256"
+          sha256sum --check "$RUNNER_TEMP/booking-source.sha256" > /dev/null
+          test "$(safe_git rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(safe_git status --porcelain)"
+          # Extract only the pinned image's Node binary; no host npm/lifecycle.
+          # Host ABI compatibility is an execution gate, not presumed.
+          timeout 15s docker create --cidfile "$owned/node-extract.cid" --label "luster-driver-owner=$owner" --network=none --cap-drop=ALL --security-opt=no-new-privileges --memory=64m --memory-swap=64m --pids-limit=16 "$NODE_IMAGE" true > /dev/null
+          nodecid="$(cat "$owned/node-extract.cid")"
+          timeout 15s docker cp "$nodecid:/usr/local/bin/node" "$owned/node"
+          chmod 0555 "$owned/node"
+          env -i PATH=/usr/bin:/bin HOME="$owned" "$owned/node" -e 'if(!process.version.startsWith("v24."))process.exit(1);console.log(process.version)'
+          # Source attestation immediately before trusted Docker runner execution.
+          assert_git_metadata
+          sha256sum --check "$RUNNER_TEMP/booking-git-metadata.sha256"
+          sha256sum --check "$RUNNER_TEMP/booking-source.sha256" > /dev/null
+          test "$(safe_git rev-parse HEAD)" = "$SUBJECT_SHA"
+          test -z "$(safe_git status --porcelain)"
+          # Recheck all 43 CI contracts plus four dependency-pair contracts on
+          # the pinned Node 24 binary. Local attempts hit the Mac's RSS stop.
+          if ! timeout 90s env -i PATH=/usr/bin:/bin HOME="$owned" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null NODE_OPTIONS=--max-old-space-size=192 "$owned/node" --test --test-concurrency=1 --test-reporter=tap scripts/ci-workflow.node-test.mjs scripts/dependency-pair.node-test.mjs > "$results/ci-contracts.tap" 2>&1; then
+            tail -n 80 "$results/ci-contracts.tap"
+            exit 1
+          fi
+          env -i PATH=/usr/bin:/bin HOME="$owned" "$owned/node" -e 'const fs=require("node:fs"),a=require("node:assert/strict"),text=fs.readFileSync(process.argv[1],"utf8"),counts=Object.fromEntries([...text.matchAll(/^# (tests|pass|fail|cancelled|skipped) (\d+)$/gm)].map(m=>[m[1],Number(m[2])]));a.deepEqual(counts,{tests:47,pass:47,fail:0,cancelled:0,skipped:0});console.log(JSON.stringify({ciAndDependencyContracts:counts}))' "$results/ci-contracts.tap"
+          timeout 240s env -i PATH=/usr/bin:/bin HOME="$owned" RUNNER_TEMP="$RUNNER_TEMP" "$owned/node" scripts/run-topup-cursor-postgres.mjs
+          env -i PATH=/usr/bin:/bin HOME="$owned" "$owned/node" -e 'const r=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));console.log(JSON.stringify(r))' "$RUNNER_TEMP/topup-cursor-postgres-summary.json"
+          sha256sum --check "$RUNNER_TEMP/booking-source.sha256" > /dev/null
+          test -z "$(safe_git status --porcelain)"

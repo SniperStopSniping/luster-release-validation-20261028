@@ -1,0 +1,43 @@
+{
+  "candidate": "a745b0c80263a0bc129a8f50a58671d1c596f9ee",
+  "tree": "649e328be9b2c094b09e14720a947d2c5721239c",
+  "packSha256": "e7ee5fd5b2d4084ca416d1025a2d9371e39e58d3216b17a5f67254ff9955a144",
+  "packBytes": 197937771,
+  "parts": [
+    {
+      "name": "candidate-a745.pack.part00",
+      "bytes": 33554432,
+      "sha256": "2f73c20a217aa812c03cc81a0c1f69786006a98982a4236197cd00a086b5a377"
+    },
+    {
+      "name": "candidate-a745.pack.part01",
+      "bytes": 33554432,
+      "sha256": "527e201bc174e5878ba5c81f0eb810b190149afd64ba6c8c397f8fbca131c958"
+    },
+    {
+      "name": "candidate-a745.pack.part02",
+      "bytes": 33554432,
+      "sha256": "e8a2a9f4d4557f00a860b8eb025db638a15a003fe3d4a2139065e38543999889"
+    },
+    {
+      "name": "candidate-a745.pack.part03",
+      "bytes": 33554432,
+      "sha256": "b3445eb1036bd6e8b3eb27a7c85e69bbd58d650445dc282fef811fc5dcd9df1f"
+    },
+    {
+      "name": "candidate-a745.pack.part04",
+      "bytes": 33554432,
+      "sha256": "fbc5a182201950366a251ffadbf976fd5e62f3b9548cbca2aef165b04ba4bd26"
+    },
+    {
+      "name": "candidate-a745.pack.part05",
+      "bytes": 30165611,
+      "sha256": "bb81fc6176255b3a739e2a1e895bd6a943ef772ce08addb07395cea34facddfd"
+    }
+  ],
+  "objects": {
+    "commit": 1,
+    "tree": 885,
+    "blob": 5390
+  }
+}
