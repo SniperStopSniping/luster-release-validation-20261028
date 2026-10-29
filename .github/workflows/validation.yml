@@ -27,7 +27,7 @@ permissions:
 jobs:
   booking:
     runs-on: ubuntu-latest
-    timeout-minutes: 11
+    timeout-minutes: 10
     env:
       SUBJECT_SHA: 'a745b0c80263a0bc129a8f50a58671d1c596f9ee'
       NODE_IMAGE: 'node:24-bookworm-slim@sha256:e1582112fb9f152ed38eefcd712efc93fee1becb519fdfa57574d5e07eaa5e7d'
@@ -214,7 +214,7 @@ jobs:
           test -z "$(safe_git status --porcelain)"
           # PG has only loopback, no bridge, port publication, host networking,
           # capabilities, credential mounts or persistent/shared database volume.
-          docker run -d --cidfile "$owned/pg.cid" --label "luster-driver-owner=$owner" --network=none --user=postgres --cap-drop=ALL --security-opt=no-new-privileges --read-only --memory=2g --memory-swap=2g --cpus=2 --pids-limit=128 --tmpfs /tmp:rw --tmpfs /var/lib/postgresql/data:rw,mode=1777 -e PGDATA=/var/lib/postgresql/data/owned -e POSTGRES_DB=luster_e2e_ci_disposable -e POSTGRES_USER=luster_e2e_ci -e POSTGRES_PASSWORD=luster-e2e-ci-only-password "$PG_IMAGE" postgres -h 127.0.0.1 -p 55432 -c unix_socket_directories=/tmp
+          docker run -d --cidfile "$owned/pg.cid" --label "luster-driver-owner=$owner" --network=none --user=postgres --cap-drop=ALL --security-opt=no-new-privileges --read-only --memory=2g --memory-swap=2g --cpus=2 --pids-limit=128 --tmpfs /tmp:rw --tmpfs /var/run/postgresql:rw,mode=1777 --tmpfs /var/lib/postgresql/data:rw,mode=1777 -e PGDATA=/var/lib/postgresql/data/owned -e POSTGRES_DB=luster_e2e_ci_disposable -e POSTGRES_USER=luster_e2e_ci -e POSTGRES_PASSWORD=luster-e2e-ci-only-password "$PG_IMAGE" postgres -h 127.0.0.1 -p 55432 -c unix_socket_directories=/var/run/postgresql
           pgid="$(cat "$owned/pg.cid")"
           timeout 15s docker inspect "$pgid" | jq -e --arg image "$PG_IMAGE" '.[0] | .Config.Image == $image and .HostConfig.NetworkMode == "none" and ((.HostConfig.PortBindings // {}) | length == 0) and (.HostConfig.Privileged == false)'
           ready=false
